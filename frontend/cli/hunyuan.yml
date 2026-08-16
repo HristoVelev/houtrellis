@@ -11,16 +11,15 @@ pipeline:
       height: 1024
       num_inference_steps: 10 # Fast steps for testing
 
-  # Step 2: Image-to-3D Generation using Tencent Hunyuan3D
+  # Step 2: Image-to-3D Generation using Tencent Hunyuan3D (Real Parameters!)
   - step: "bake_3d_mesh_hunyuan"
     endpoint: "img23d"
     payload:
       provider: "hunyuan" # Swaps the entire 3D engine strategy to Hunyuan3D!
       image_path: "$[generate_concept_art.image_path]"
       seed: 42
-      ss_sampling_steps: 12
-      ss_guidance_strength: 7.5
-      slat_sampling_steps: 12
-      slat_guidance_strength: 3.0
-      mesh_simplify: 0.95
-      texture_size: 1024
+      gen_steps: 50 # Sampling steps for multi-view generation
+      max_faces_num: 80000 # Resolution vertex face limit
+      do_texture_mapping: true # Unwraps UVs and applies texture mapping
+      do_bake: true # Bakes high-fidelity materials
+      bake_align_times: 3 # Alignment iterations

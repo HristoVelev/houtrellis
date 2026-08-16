@@ -86,7 +86,22 @@ class HunyuanProvider(Base3DProvider):
         self, image_path: str, seed: int, params: Dict[str, Any], output_path: str
     ) -> str:
         self.load_model()
-        print(f"[Hunyuan3D] Running simulated Hunyuan3D generation on: {image_path}...")
+
+        # Parse actual Tencent Hunyuan3D parameters
+        gen_steps = params.get("gen_steps", 50)
+        max_faces_num = params.get("max_faces_num", 120000)
+        do_texture_mapping = params.get("do_texture_mapping", False)
+        do_bake = params.get("do_bake", False)
+        bake_align_times = params.get("bake_align_times", 3)
+
+        print(f"[Hunyuan3D] Running simulated Hunyuan3D generation on: {image_path}")
+        print(f"[Hunyuan3D params] seed: {seed}")
+        print(f"[Hunyuan3D params] gen_steps (Multi-View Diffusion): {gen_steps}")
+        print(f"[Hunyuan3D params] max_faces_num (Face Limit): {max_faces_num}")
+        print(f"[Hunyuan3D params] do_texture_mapping: {do_texture_mapping}")
+        print(f"[Hunyuan3D params] do_bake (PBR Bake): {do_bake}")
+        print(f"[Hunyuan3D params] bake_align_times: {bake_align_times}")
+
         time.sleep(4)
         self._write_minimal_glb(output_path)
         print(f"[Hunyuan3D] Simulated Hunyuan3D GLB mesh saved to: {output_path}")
