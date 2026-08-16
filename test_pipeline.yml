@@ -5,11 +5,11 @@ pipeline:
     endpoint: "txt2img"
     payload:
       provider: "sdxl"
-      prompt: "A gorgeous sci-fi mechanical robotic glove, highly detailed concept art, photorealistic, 4k"
+      prompt: "high medieval knight in armor, no props. T pose, highly detailed concept art"
       seed: 1337
       width: 1024
       height: 1024
-      num_inference_steps: 10 # Fast steps for testing
+      num_inference_steps: 30 # Fast steps for testing
 
   # Step 2: Image-to-3D Generation (Chains outputs from Step 1!)
   - step: "bake_3d_mesh"

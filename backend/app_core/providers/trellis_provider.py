@@ -3,10 +3,16 @@ import os
 import struct
 import sys
 import time
+import traceback
 from typing import Any, Dict
 
 from ..core import vram
 from .base import Base3DProvider
+
+# Force TRELLIS environment variables at the absolute top of the module,
+# BEFORE any imports can happen! This is critical so trellis doesn't default to flash_attn.
+os.environ["ATTN_BACKEND"] = "xformers"
+os.environ["SPCONV_ALGO"] = "native"
 
 # Dynamically add the cloned TRELLIS repository to sys.path
 provider_dir = os.path.dirname(os.path.abspath(__file__))
@@ -22,7 +28,9 @@ try:
     from trellis.utils import postprocessing_utils
 
     HAS_TRELLIS = True
-except ImportError:
+except ImportError as e:
+    print("[TRELLIS Provider] ImportError during loading:")
+    traceback.print_exc()
     torch = None
     HAS_TRELLIS = False
 
@@ -39,12 +47,15 @@ class TrellisProvider(Base3DProvider):
         # Ensure we unload any competing 2D models before loading TRELLIS
         vram.unload_2d()
 
+        print(f"[TRELLIS Provider Diagnostics] HAS_TRELLIS: {HAS_TRELLIS}")
+        print(f"[TRELLIS Provider Diagnostics] torch is not None: {torch is not None}")
+        if torch is not None:
+            print(
+                f"[TRELLIS Provider Diagnostics] torch.cuda.is_available(): {torch.cuda.is_available()}"
+            )
+
         if HAS_TRELLIS and torch is not None and torch.cuda.is_available():
             print("[TRELLIS] Loading TRELLIS model weights onto GPU...")
-
-            # Configure environment variables before importing / loading
-            os.environ["ATTN_BACKEND"] = "xformers"
-            os.environ["SPCONV_ALGO"] = "native"
 
             # Apply xformers fmha BlockDiagonalMask monkeypatch if needed
             try:
