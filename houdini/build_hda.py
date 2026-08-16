@@ -109,7 +109,11 @@ def build_trellis_top_hda():
     hda_node.setParmTemplateGroup(group)
 
     # 3. Configure the start_server Shell TOP parameters
-    shell_command = """# Check if server is already running on port 8000
+    shell_command = """# Unset Houdini python environment variables to prevent virtualenv import errors
+unset PYTHONHOME
+unset PYTHONPATH
+
+# Check if server is already running on port 8000
 if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/docs | grep -q "200"; then
     echo "=== HouTrellis server is already running. Proceeding... ==="
 else
