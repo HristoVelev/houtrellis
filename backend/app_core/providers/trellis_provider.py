@@ -16,7 +16,9 @@ os.environ["SPCONV_ALGO"] = "native"
 
 # Dynamically add the cloned TRELLIS repository to sys.path
 provider_dir = os.path.dirname(os.path.abspath(__file__))
-trellis_path = os.path.abspath(os.path.join(provider_dir, "..", "..", "TRELLIS"))
+trellis_path = os.path.abspath(
+    os.path.join(provider_dir, "..", "..", "third_party", "TRELLIS")
+)
 if os.path.exists(trellis_path) and trellis_path not in sys.path:
     sys.path.append(trellis_path)
     print(f"[TRELLIS Provider] Appended TRELLIS repo to sys.path: {trellis_path}")

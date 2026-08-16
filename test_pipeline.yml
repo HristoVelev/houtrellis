@@ -5,11 +5,11 @@ pipeline:
     endpoint: "txt2img"
     payload:
       provider: "sdxl"
-      prompt: "high medieval knight in armor, no props. T pose, highly detailed concept art"
+      prompt: "complex electromochanical device, cylinder with pointy end, highly detailed concept art"
       seed: 1337
       width: 1024
       height: 1024
-      num_inference_steps: 30 # Fast steps for testing
+      num_inference_steps: 80 # Fast steps for testing
 
   # Step 2: Image-to-3D Generation (Chains outputs from Step 1!)
   - step: "bake_3d_mesh"
@@ -23,5 +23,5 @@ pipeline:
       ss_guidance_strength: 7.5
       slat_sampling_steps: 12
       slat_guidance_strength: 3.0
-      mesh_simplify: 0.95
-      texture_size: 1024
+      mesh_simplify: 0.1
+      texture_size: 2048
