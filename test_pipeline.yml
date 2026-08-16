@@ -25,3 +25,17 @@ pipeline:
       slat_guidance_strength: 3.0
       mesh_simplify: 0.1
       texture_size: 2048
+
+  # Step 3: Image-to-3D Generation using Next-Gen Trellis-2 (Chains outputs from Step 1!)
+  - step: "bake_3d_mesh_v2"
+    endpoint: "img23d"
+    payload:
+      provider: "trellis2"
+      image_path: "$[generate_concept_art.image_path]"
+      seed: 42
+      ss_sampling_steps: 12
+      ss_guidance_strength: 7.5
+      slat_sampling_steps: 12
+      slat_guidance_strength: 3.0
+      mesh_simplify: 0.1
+      texture_size: 2048

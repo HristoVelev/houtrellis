@@ -7,6 +7,7 @@ from typing import Optional
 
 from app_core.core import vram
 from app_core.providers.hunyuan_provider import HunyuanProvider
+from app_core.providers.trellis2_provider import Trellis2Provider
 from app_core.providers.trellis_provider import TrellisProvider
 from fastapi import APIRouter, BackgroundTasks, HTTPException
 from pydantic import BaseModel
@@ -86,6 +87,8 @@ def run_img23d_inference(task_id: str, request: Img23DRequest):
             # Resolve Strategy Provider
             if request.provider.lower() == "trellis":
                 provider = TrellisProvider()
+            elif request.provider.lower() == "trellis2":
+                provider = Trellis2Provider()
             elif request.provider.lower() == "hunyuan":
                 provider = HunyuanProvider()
             else:
