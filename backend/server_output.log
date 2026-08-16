@@ -1,0 +1,45 @@
+Python path configuration:
+  PYTHONHOME = '/opt/hfs21.0.440/python'
+  PYTHONPATH = '/mnt/prod/installers/vray_houdini/current/appsdk/python:/mnt/prod/installers/vray_houdini/current/vfh_home/dso_py311/21.0.440/python:/opt/ayon/AYON-1.4.3-linux-rocky9/common:/opt/ayon/AYON-1.4.3-linux-rocky9/dependencies:/home/admin/.local/share/AYON/addons/core_1.7.2/ayon_core/vendor/python:/home/admin/.local/share/AYON/addons/applications_1.3.3:/home/admin/.local/share/AYON/addons/ayon_ocio_1.2.2:/home/admin/.local/share/AYON/addons/blender_1.0.14:/home/admin/.local/share/AYON/addons/core_1.7.2:/home/admin/.local/share/AYON/addons/deadline_0.5.21:/home/admin/.local/share/AYON/addons/houdini_0.9.4:/home/admin/.local/share/AYON/addons/kitsu_1.2.6:/home/admin/.local/share/AYON/addons/nuke_0.3.16:/home/admin/.local/share/AYON/addons/openrv_1.1.4:/home/admin/.local/share/AYON/addons/usd_0.1.4:/home/admin/.local/share/AYON/dependency_packages/ayon_2510270955_linux-rocky9.zip/dependencies'
+  program name = '/home/admin/houtrellis/backend/venv/bin/python'
+  isolated = 0
+  environment = 1
+  user site = 0
+  safe_path = 0
+  import site = 1
+  is in build tree = 0
+  stdlib dir = '/opt/hfs21.0.440/python/lib64/python3.11'
+  sys._base_executable = '/home/admin/houtrellis/backend/venv/bin/python'
+  sys.base_prefix = '/opt/hfs21.0.440/python'
+  sys.base_exec_prefix = '/opt/hfs21.0.440/python'
+  sys.platlibdir = 'lib64'
+  sys.executable = '/home/admin/houtrellis/backend/venv/bin/python'
+  sys.prefix = '/opt/hfs21.0.440/python'
+  sys.exec_prefix = '/opt/hfs21.0.440/python'
+  sys.path = [
+    '/mnt/prod/installers/vray_houdini/current/appsdk/python',
+    '/mnt/prod/installers/vray_houdini/current/vfh_home/dso_py311/21.0.440/python',
+    '/opt/ayon/AYON-1.4.3-linux-rocky9/common',
+    '/opt/ayon/AYON-1.4.3-linux-rocky9/dependencies',
+    '/home/admin/.local/share/AYON/addons/core_1.7.2/ayon_core/vendor/python',
+    '/home/admin/.local/share/AYON/addons/applications_1.3.3',
+    '/home/admin/.local/share/AYON/addons/ayon_ocio_1.2.2',
+    '/home/admin/.local/share/AYON/addons/blender_1.0.14',
+    '/home/admin/.local/share/AYON/addons/core_1.7.2',
+    '/home/admin/.local/share/AYON/addons/deadline_0.5.21',
+    '/home/admin/.local/share/AYON/addons/houdini_0.9.4',
+    '/home/admin/.local/share/AYON/addons/kitsu_1.2.6',
+    '/home/admin/.local/share/AYON/addons/nuke_0.3.16',
+    '/home/admin/.local/share/AYON/addons/openrv_1.1.4',
+    '/home/admin/.local/share/AYON/addons/usd_0.1.4',
+    '/home/admin/.local/share/AYON/dependency_packages/ayon_2510270955_linux-rocky9.zip/dependencies',
+    '/opt/hfs21.0.440/python/lib64/python311.zip',
+    '/opt/hfs21.0.440/python/lib64/python3.11',
+    '/opt/hfs21.0.440/python/lib64/python3.11/lib-dynload',
+  ]
+Fatal Python error: init_fs_encoding: failed to get the Python codec of the filesystem encoding
+Python runtime state: core initialized
+ModuleNotFoundError: No module named 'encodings'
+
+Current thread 0x00007f1091a6ae00 (most recent call first):
+  <no Python frame>
