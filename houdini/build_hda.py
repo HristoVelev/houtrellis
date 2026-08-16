@@ -1,9 +1,12 @@
 import os
 import sys
 
+# Define HDA version suffix here
+VERSION = "v01"
+
 
 def build_trellis_top_hda():
-    print("=== Creating HouTrellis TOP HDA Programmatically ===")
+    print(f"=== Creating HouTrellis TOP HDA Programmatically ({VERSION}) ===")
 
     # Ensure hou module is loaded (run inside hython)
     try:
@@ -15,7 +18,7 @@ def build_trellis_top_hda():
         sys.exit(1)
 
     hda_dir = os.path.dirname(os.path.abspath(__file__))
-    hda_path = os.path.join(hda_dir, "houtrellis.hda")
+    hda_path = os.path.join(hda_dir, f"houtrellis_{VERSION}.hda")
 
     # 1. Create a temporary network to scaffold our node
     topnet = hou.node("/out").createNode("topnet", "temp_topnet")
@@ -25,6 +28,20 @@ def build_trellis_top_hda():
 
     # Create the internal Python Script TOP inside the subnet to do the work
     core_node = hda_node.createNode("pythonscript", "trellis_core")
+
+    # Wire the internal nodes so they are connected between Subnet Input and Subnet Output
+    subnet_input = hda_node.node("subnetinput1")
+    subnet_output = hda_node.node("subnetoutput1")
+
+    if subnet_input and subnet_output:
+        print("Wiring internal Python Script TOP node between input and output...")
+        core_node.setInput(0, subnet_input)
+        subnet_output.setInput(0, core_node)
+
+        # Position them nicely inside the HDA graph viewport
+        subnet_input.setPosition(hou.Vector2(0, 2))
+        core_node.setPosition(hou.Vector2(0, 0))
+        subnet_output.setPosition(hou.Vector2(0, -2))
 
     # 2. Configure parameters for our HDA (on the parent subnet container node)
     group = hda_node.parmTemplateGroup()
@@ -182,8 +199,8 @@ cook_trellis_item(work_item)
     core_node.parm("inprocess").set(True)
 
     # 4. Create the digital asset definition from the Subnet Container Node
-    hda_node_type_name = "houtrellis"
-    hda_label = "HouTrellis TOP"
+    hda_node_type_name = f"houtrellis_{VERSION}"
+    hda_label = f"HouTrellis TOP {VERSION.upper()}"
 
     new_hda_node = hda_node.createDigitalAsset(
         name=hda_node_type_name,
@@ -193,11 +210,14 @@ cook_trellis_item(work_item)
         max_num_inputs=1,
     )
 
-    # Save definition
+    # Save parameters and definition to ensure they are exposed on the HDA type interface
     hda_definition = new_hda_node.type().definition()
+    hda_definition.setParmTemplateGroup(group)
     hda_definition.save(hda_path)
+
     print(f"SUCCESS: Created Digital Asset successfully!")
     print(f"HDA File Location: {hda_path}")
+    print(f"HDA Type Name: {hda_node_type_name}")
 
     # Cleanup temporary nodes
     topnet.destroy()
