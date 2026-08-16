@@ -22,10 +22,24 @@ Create a Python microservice with TWO separate, independent REST endpoints:
 - **Separation of Environments:** Houdini's internal Python runtime must NEVER directly import `torch` or model packages due to C++ CUDA DLL conflicts. All inference happens out-of-process via HTTP.
 - **Vibe-Coding Iteration:** Build modular, functional code. Keep script setups lightweight, clean, and easily drop-in for Houdini Python nodes.
 
-### Where to Start
-Ask me which part of the system we should build first:
-1. The `app.py` FastAPI local server wrapping TRELLIS.
-2. The Houdini Python TOP node script (requests + polling logic).
-3. The Houdini SOP Asset / HDA wrapper setup.
 
-Acknowledge this role and ask where we should begin.
+### Project Architecture & Design Pattern
+The system uses a **Strategy / Provider Pattern** with a **Model-Agnostic API Interface**. The pipeline is fully decoupled: Houdini TOPs handles orchestration, parameters, and file path passing, while the Python backend handles execution and VRAM management.
+
+#### 1. Directory Structure (`trellis_service/`)
+```text
+trellis_service/
+├── app/
+│   ├── main.py                     # FastAPI entry point
+│   ├── api/
+│   │   └── v1/
+│   │       ├── router.py           # API Router
+│   │       └── endpoints/
+│   │           ├── txt2img.py      # POST /api/v1/txt2img
+│   │           └── img23d.py       # POST /api/v1/img23d
+│   ├── providers/                  # ML Engine Implementations
+│   │   ├── base.py                 # Abstract Base Class (Base3DProvider)
+│   │   ├── trellis_provider.py     # Microsoft TRELLIS engine
+│   │   └── hunyuan_provider.py    # Tencent Hunyuan3D engine
+│   └── core/
+│       └── vram.py                 # CUDA memory flush & unload helpers

@@ -2,7 +2,7 @@ import os
 import sys
 
 # Define HDA version suffix here
-VERSION = "v01"
+VERSION = "v03"
 
 
 def build_trellis_top_hda():
@@ -26,22 +26,32 @@ def build_trellis_top_hda():
     # Create a TOP Subnet Node which will be the basis of our HDA
     hda_node = topnet.createNode("subnet", "houtrellis")
 
-    # Create the internal Python Script TOP inside the subnet to do the work
-    core_node = hda_node.createNode("pythonscript", "trellis_core")
+    # Create the internal Generic Generator TOP node to auto-start the FastAPI server if needed
+    server_node = hda_node.createNode("genericgenerator", "start_server")
 
-    # Wire the internal nodes so they are connected between Subnet Input and Subnet Output
+    # Create the internal URL Request TOP (httptype POST)
+    trigger_node = hda_node.createNode("urlrequest", "trigger_generation")
+
+    # Create the internal Python Script TOP to handle clean, focused status polling
+    poll_node = hda_node.createNode("pythonscript", "poll_status")
+
+    # Wire the internal nodes between Subnet Input and Subnet Output
     subnet_input = hda_node.node("subnetinput1")
     subnet_output = hda_node.node("subnetoutput1")
 
     if subnet_input and subnet_output:
-        print("Wiring internal Python Script TOP node between input and output...")
-        core_node.setInput(0, subnet_input)
-        subnet_output.setInput(0, core_node)
+        print("Wiring internal nodes including auto-server startup...")
+        server_node.setInput(0, subnet_input)
+        trigger_node.setInput(0, server_node)
+        poll_node.setInput(0, trigger_node)
+        subnet_output.setInput(0, poll_node)
 
         # Position them nicely inside the HDA graph viewport
-        subnet_input.setPosition(hou.Vector2(0, 2))
-        core_node.setPosition(hou.Vector2(0, 0))
-        subnet_output.setPosition(hou.Vector2(0, -2))
+        subnet_input.setPosition(hou.Vector2(0, 4))
+        server_node.setPosition(hou.Vector2(0, 2))
+        trigger_node.setPosition(hou.Vector2(0, 0))
+        poll_node.setPosition(hou.Vector2(0, -2))
+        subnet_output.setPosition(hou.Vector2(0, -4))
 
     # 2. Configure parameters for our HDA (on the parent subnet container node)
     group = hda_node.parmTemplateGroup()
@@ -94,111 +104,127 @@ def build_trellis_top_hda():
 
     hda_node.setParmTemplateGroup(group)
 
-    # 3. Read our custom cook script and embed it inside the internal python script parameter
-    cook_script_path = os.path.join(hda_dir, "top_hda_cook_script.py")
-    with open(cook_script_path, "r") as f:
-        cook_script_content = f.read()
+    # 3. Configure the start_server Shell TOP parameters
+    shell_command = """# Check if server is already running on port 8000
+if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/docs | grep -q "200"; then
+    echo "=== HouTrellis server is already running. Proceeding... ==="
+else
+    echo "=== Server not detected. Starting HouTrellis FastAPI Server... ==="
+    # Start the server in the background, redirecting stdout/stderr and detaching
+    nohup /home/admin/houtrellis/backend/venv/bin/python /home/admin/houtrellis/backend/app.py > /home/admin/houtrellis/backend/server_output.log 2>&1 &
 
-    # We alter the internal cook script slightly to dynamically fetch from parent (HDA subnet)
-    # if running inside a container, or fallback to local node.
-    enhanced_cook_script = """# Dynamic Parameter Node Resolver
+    # Wait a few seconds for Uvicorn to initialize and bind to port 8000
+    echo "Waiting for server to initialize..."
+    for i in {1..15}; do
+        if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/docs | grep -q "200"; then
+            echo "=== Server successfully initialized! ==="
+            break
+        fi
+        sleep 1
+    done
+fi
+"""
+    server_node.parm("shellcommand").set(1)
+    server_node.parm("pdg_command").set(shell_command)
+
+    # 4. Configure parameters on the internal Trigger URL Request Node
+    # httptype: 1 corresponds to POST
+    trigger_node.parm("httptype").set(1)
+
+    # Set the target generate URL dynamically from HDA api_url parameter
+    trigger_node.parm("baseurl").set('`chs("../api_url")`/generate')
+
+    # Configure JSON payload
+    trigger_node.parm("usecontenttype").set(1)
+    trigger_node.parm("contenttype").set("application/json")
+
+    # payloadtype: 3 corresponds to Custom String
+    trigger_node.parm("payloadtype").set(3)
+
+    # Embed raw JSON body that references our parent HDA parameters using Houdini backticks
+    raw_payload_json = """{
+  "image_path": "`chs("../image_path")`",
+  "seed": `chi("../seed")`,
+  "ss_sampling_steps": `chi("../ss_steps")`,
+  "ss_guidance_strength": `ch("../ss_strength")`,
+  "slat_sampling_steps": `chi("../slat_steps")`,
+  "slat_guidance_strength": `ch("../slat_strength")`,
+  "mesh_simplify": `ch("../mesh_simplify")`,
+  "texture_size": `chi("../texture_size")`
+}"""
+    trigger_node.parm("payloadcustom").set(raw_payload_json)
+
+    # Save Response directly to a PDG attribute
+    # saveto: 1 corresponds to Attribute
+    trigger_node.parm("saveto").set(1)
+    trigger_node.parm("attributename").set("status_data")
+
+    # 5. Configure parameters on the internal Poll Node (Python Script TOP)
+    polling_script = """# Clean, Focused Status Polling
 import os
 import time
 import requests
 import pdg
 
-def cook_trellis_item(work_item):
+def cook_status_polling(work_item):
     node = work_item.holder.node
-    # If we are inside an HDA Subnet container, parameters are on the parent node
+    # Find the HDA subnet node dynamically
     param_node = node.parent() if (node.parent() and node.parent().type().name() != "topnet") else node
-
     api_url = param_node.evalParm('api_url')
-    image_path = param_node.evalParm('image_path')
 
-    # Resolve relative paths ($HIP, $JOB, etc.) to absolute paths
-    image_path = os.path.abspath(hou.expandString(image_path)) if 'hou' in globals() else os.path.abspath(image_path)
-
-    seed = int(param_node.evalParm('seed'))
-    ss_steps = int(param_node.evalParm('ss_steps'))
-    ss_strength = float(param_node.evalParm('ss_strength'))
-    slat_steps = int(param_node.evalParm('slat_steps'))
-    slat_strength = float(param_node.evalParm('slat_strength'))
-    mesh_simplify = float(param_node.evalParm('mesh_simplify'))
-    texture_size = int(param_node.evalParm('texture_size'))
-
-    poll_interval = 2.0
-    timeout = 600.0
-
-    if not os.path.exists(image_path):
-        print(f"Error: Input image file does not exist at: {image_path}")
+    # Extract task ID from our previous urlrequest response attribute
+    status_data = work_item.attribValue('status_data')
+    if not status_data or 'task_id' not in status_data:
+        print("Error: Could not find valid 'task_id' in work item attributes.")
         work_item.setFailed()
         return
 
-    payload = {
-        "image_path": image_path,
-        "seed": seed,
-        "ss_sampling_steps": ss_steps,
-        "ss_guidance_strength": ss_strength,
-        "slat_sampling_steps": slat_steps,
-        "slat_guidance_strength": slat_strength,
-        "mesh_simplify": mesh_simplify,
-        "texture_size": texture_size
-    }
+    task_id = status_data['task_id']
+    status_endpoint = f"{api_url.rstrip('/')}/status/{task_id}"
 
-    print(f"Triggering TRELLIS generation on: {api_url}")
-    generate_endpoint = f"{api_url.rstrip('/')}/generate"
+    poll_interval = 2.0
+    timeout = 600.0
+    start_time = time.time()
 
-    try:
-        response = requests.post(generate_endpoint, json=payload, timeout=10)
-        response.raise_for_status()
+    print(f"Starting status polling for Task ID: {task_id}")
+    while True:
+        if time.time() - start_time > timeout:
+            print(f"Error: Polling timed out after {timeout} seconds.")
+            work_item.setFailed()
+            return
 
-        task_data = response.json()
-        task_id = task_data["task_id"]
-        print(f"Task queued successfully. Task ID: {task_id}")
-
-        status_endpoint = f"{api_url.rstrip('/')}/status/{task_id}"
-        start_time = time.time()
-
-        while True:
-            if time.time() - start_time > timeout:
-                print(f"Error: Generation timed out after {timeout} seconds.")
-                work_item.setFailed()
-                return
-
-            status_response = requests.get(status_endpoint, timeout=5)
-            status_response.raise_for_status()
-            status_data = status_response.json()
-            status = status_data["status"]
+        try:
+            res = requests.get(status_endpoint, timeout=5).json()
+            status = res["status"]
 
             if status == "completed":
-                glb_path = status_data["output_path"]
+                glb_path = res["output_path"]
                 print(f"Success! Model generated at: {glb_path}")
                 work_item.addResultData(glb_path, "file/glb", 0)
                 break
             elif status == "failed":
-                error_msg = status_data.get("error", "Unknown backend error")
-                print(f"Error: TRELLIS Backend failed generation: {error_msg}")
+                print(f"Error: Generation failed on backend with error: {res.get('error')}")
                 work_item.setFailed()
                 return
             elif status in ["queued", "processing"]:
-                print(f"State: {status}... Polling in {poll_interval}s")
+                print(f"State: {status}... sleeping for {poll_interval}s")
                 time.sleep(poll_interval)
             else:
                 print(f"Error: Unexpected status value: {status}")
                 work_item.setFailed()
                 return
-    except Exception as e:
-        print(f"Exception raised during cook: {e}")
-        work_item.setFailed()
+        except Exception as e:
+            print(f"Exception during polling: {e}")
+            work_item.setFailed()
+            return
 
-# Execution entry point inside Houdini PDG
-cook_trellis_item(work_item)
+# Run the polling loop
+cook_status_polling(work_item)
 """
+    poll_node.parm("script").set(polling_script)
+    poll_node.parm("inprocess").set(True)
 
-    core_node.parm("script").set(enhanced_cook_script)
-    core_node.parm("inprocess").set(True)
-
-    # 4. Create the digital asset definition from the Subnet Container Node
+    # 6. Create the digital asset definition from the Subnet Container Node
     hda_node_type_name = f"houtrellis_{VERSION}"
     hda_label = f"HouTrellis TOP {VERSION.upper()}"
 
