@@ -1,18 +1,14 @@
-#!/home/admin/houtrellis/backend/venv/bin/python
+import argparse
+import json
 import os
 import sys
-import argparse
-import requests
 import time
-import json
 
-# Setup sys.path to find our venv packages
-backend_dir = os.path.dirname(os.path.abspath(__file__))
-venv_bin = os.path.join(backend_dir, "backend", "venv", "bin")
-sys.path.append(os.path.join(backend_dir, "backend"))
+import requests
 
 # API Connection
 API_URL = "http://127.0.0.1:8000/api/v1"
+
 
 def show_banner():
     print("""
@@ -23,10 +19,13 @@ def show_banner():
    Houdini Generative AI Pipeline CLI Suite 🚀
     """)
 
+
 def run_yaml_pipeline(yaml_path):
-    # Import the test_runner module logic directly to execute
-    from backend.test_runner import parse_and_run_pipeline
+    # Absolute import within the package namespace
+    from test_runner import parse_and_run_pipeline
+
     parse_and_run_pipeline(yaml_path)
+
 
 def poll_task_progress(endpoint, task_id, log_file):
     status_url = f"{API_URL}/{endpoint}/status/{task_id}"
@@ -73,6 +72,7 @@ def poll_task_progress(endpoint, task_id, log_file):
 
         time.sleep(poll_interval)
 
+
 def handle_txt2img(args):
     print(f"=== Triggering 2D Generation ({args.provider}) ===")
     payload = {
@@ -81,7 +81,7 @@ def handle_txt2img(args):
         "seed": args.seed,
         "width": args.width,
         "height": args.height,
-        "num_inference_steps": args.steps
+        "num_inference_steps": args.steps,
     }
 
     # Check if server is running
@@ -89,7 +89,7 @@ def handle_txt2img(args):
         requests.get("http://127.0.0.1:8000/", timeout=2)
     except Exception:
         print("Error: FastAPI backend server is not running on port 8000!")
-        print("Please start it first by running: python backend/app.py")
+        print("Please start it first by running the backend server.")
         sys.exit(1)
 
     res = requests.post(f"{API_URL}/txt2img", json=payload)
@@ -103,11 +103,13 @@ def handle_txt2img(args):
     output_png = result["image_path"]
     if args.output:
         import shutil
+
         dest = os.path.abspath(args.output)
         shutil.copy(output_png, dest)
         print(f"Output saved to: {dest}")
     else:
         print(f"Output located at: {output_png}")
+
 
 def handle_img23d(args):
     print(f"=== Triggering 3D Generation ({args.provider}) ===")
@@ -121,11 +123,11 @@ def handle_img23d(args):
         "image_path": os.path.abspath(args.image_path),
         "seed": args.seed,
         "ss_sampling_steps": args.ss_steps,
-        "ss_guidance_strength": args.ss_strength,
+        "ss_strength": args.ss_strength,
         "slat_sampling_steps": args.slat_steps,
         "slat_guidance_strength": args.slat_strength,
         "mesh_simplify": args.simplify,
-        "texture_size": args.texture_size
+        "texture_size": args.texture_size,
     }
 
     # Check if server is running
@@ -133,7 +135,7 @@ def handle_img23d(args):
         requests.get("http://127.0.0.1:8000/", timeout=2)
     except Exception:
         print("Error: FastAPI backend server is not running on port 8000!")
-        print("Please start it first by running: python backend/app.py")
+        print("Please start it first by running the backend server.")
         sys.exit(1)
 
     res = requests.post(f"{API_URL}/img23d", json=payload)
@@ -147,11 +149,13 @@ def handle_img23d(args):
     output_glb = result["mesh_path"]
     if args.output:
         import shutil
+
         dest = os.path.abspath(args.output)
         shutil.copy(output_glb, dest)
         print(f"Output saved to: {dest}")
     else:
         print(f"Output located at: {output_glb}")
+
 
 def main():
     show_banner()
@@ -160,31 +164,85 @@ def main():
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
 
     # 1. run command (runs declarative YAML)
-    run_parser = subparsers.add_parser("run", help="Run a declarative pipeline YAML configuration file")
-    run_parser.add_argument("yaml_path", type=str, nargs="?", default="test_pipeline.yml", help="Path to test_pipeline.yml")
+    run_parser = subparsers.add_parser(
+        "run", help="Run a declarative pipeline YAML configuration file"
+    )
+    run_parser.add_argument(
+        "yaml_path",
+        type=str,
+        nargs="?",
+        default="test_pipeline.yml",
+        help="Path to test_pipeline.yml",
+    )
 
     # 2. txt2img command (single-step 2D reference art)
-    txt_parser = subparsers.add_parser("txt2img", help="Trigger a standalone 2D Text-to-Image reference generation")
-    txt_parser.add_argument("--prompt", type=str, required=True, help="Text prompt for the 2D reference image")
-    txt_parser.add_argument("--provider", type=str, default="sdxl", help="2D model engine provider (default: sdxl)")
+    txt_parser = subparsers.add_parser(
+        "txt2img", help="Trigger a standalone 2D Text-to-Image reference generation"
+    )
+    txt_parser.add_argument(
+        "--prompt",
+        type=str,
+        required=True,
+        help="Text prompt for the 2D reference image",
+    )
+    txt_parser.add_argument(
+        "--provider",
+        type=str,
+        default="sdxl",
+        help="2D model engine provider (default: sdxl)",
+    )
     txt_parser.add_argument("--seed", type=int, default=42, help="Seed value")
-    txt_parser.add_argument("--width", type=int, default=1024, help="Width of generated image")
-    txt_parser.add_argument("--height", type=int, default=1024, help="Height of generated image")
-    txt_parser.add_argument("--steps", type=int, default=15, help="Number of inference steps")
-    txt_parser.add_argument("-o", "--output", type=str, help="Destination filename for the output PNG")
+    txt_parser.add_argument(
+        "--width", type=int, default=1024, help="Width of generated image"
+    )
+    txt_parser.add_argument(
+        "--height", type=int, default=1024, help="Height of generated image"
+    )
+    txt_parser.add_argument(
+        "--steps", type=int, default=15, help="Number of inference steps"
+    )
+    txt_parser.add_argument(
+        "-o", "--output", type=str, help="Destination filename for the output PNG"
+    )
 
     # 3. img23d command (single-step 3D mesh generator)
-    img_parser = subparsers.add_parser("img23d", help="Trigger a standalone 3D Image-to-Mesh generation")
-    img_parser.add_argument("--image_path", type=str, required=True, help="Path to reference PNG image")
-    img_parser.add_argument("--provider", type=str, default="trellis", help="3D model engine provider (default: trellis)")
+    img_parser = subparsers.add_parser(
+        "img23d", help="Trigger a standalone 3D Image-to-Mesh generation"
+    )
+    img_parser.add_argument(
+        "--image_path", type=str, required=True, help="Path to reference PNG image"
+    )
+    img_parser.add_argument(
+        "--provider",
+        type=str,
+        default="trellis",
+        help="3D model engine provider (default: trellis)",
+    )
     img_parser.add_argument("--seed", type=int, default=42, help="Seed value")
-    img_parser.add_argument("--ss_steps", type=int, default=12, help="Sparse structure sampling steps")
-    img_parser.add_argument("--ss_strength", type=float, default=7.5, help="Sparse structure guidance strength")
-    img_parser.add_argument("--slat_steps", type=int, default=12, help="Slat sampling steps")
-    img_parser.add_argument("--slat_strength", type=float, default=3.0, help="Slat guidance strength")
-    img_parser.add_argument("--simplify", type=float, default=0.95, help="Mesh simplify/decimation ratio")
-    img_parser.add_argument("--texture_size", type=int, default=1024, help="PBR Texture resolution size")
-    img_parser.add_argument("-o", "--output", type=str, help="Destination filename for the output GLB")
+    img_parser.add_argument(
+        "--ss_steps", type=int, default=12, help="Sparse structure sampling steps"
+    )
+    img_parser.add_argument(
+        "--ss_strength",
+        type=float,
+        default=7.5,
+        help="Sparse structure guidance strength",
+    )
+    img_parser.add_argument(
+        "--slat_steps", type=int, default=12, help="Slat sampling steps"
+    )
+    img_parser.add_argument(
+        "--slat_strength", type=float, default=3.0, help="Slat guidance strength"
+    )
+    img_parser.add_argument(
+        "--simplify", type=float, default=0.95, help="Mesh simplify/decimation ratio"
+    )
+    img_parser.add_argument(
+        "--texture_size", type=int, default=1024, help="PBR Texture resolution size"
+    )
+    img_parser.add_argument(
+        "-o", "--output", type=str, help="Destination filename for the output GLB"
+    )
 
     args = parser.parse_args()
 
@@ -196,6 +254,7 @@ def main():
         handle_img23d(args)
     else:
         parser.print_help()
+
 
 if __name__ == "__main__":
     main()
