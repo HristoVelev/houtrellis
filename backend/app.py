@@ -259,7 +259,7 @@ def run_trellis_inference(task_id: str, request: GenerateRequest):
                 outputs["gaussian"][0],
                 outputs["mesh"][0],
                 simplify=request.mesh_simplify,  # Simplify mesh dynamically from user request
-                resolution=request.texture_size,  # Texture resolution dynamically from user request
+                texture_size=request.texture_size,  # Texture resolution dynamically from user request
                 fill_holes=True,
             )
             glb.export(output_file)
