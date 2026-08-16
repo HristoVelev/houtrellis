@@ -215,7 +215,7 @@ class TaskStatus(BaseModel):
 
 
 class LogRedirector:
-    """Context manager to redirect stdout/stderr to a task log file in real-time."""
+    """Context manager to redirect stdout/stderr to a task log file while also tee-ing to console stdout."""
 
     def __init__(self, log_path: str):
         self.log_path = log_path
@@ -229,8 +229,10 @@ class LogRedirector:
         )  # Buffering=1 for line-by-line write
         self.old_stdout = sys.stdout
         self.old_stderr = sys.stderr
-        sys.stdout = self.log_file
-        sys.stderr = self.log_file
+
+        # Redirect sys.stdout/err to our custom Tee stream to print to BOTH file and console in real-time
+        sys.stdout = self.TeeStream(self.old_stdout, self.log_file)
+        sys.stderr = self.TeeStream(self.old_stderr, self.log_file)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -238,6 +240,23 @@ class LogRedirector:
         sys.stderr = self.old_stderr
         if self.log_file:
             self.log_file.close()
+
+    class TeeStream:
+        """Helper class to write to multiple streams (console and log file) simultaneously."""
+
+        def __init__(self, terminal, file):
+            self.terminal = terminal
+            self.file = file
+
+        def write(self, message):
+            self.terminal.write(message)
+            self.file.write(message)
+            self.terminal.flush()
+            self.file.flush()
+
+        def flush(self):
+            self.terminal.flush()
+            self.file.flush()
 
 
 def run_trellis_inference(task_id: str, request: GenerateRequest):
