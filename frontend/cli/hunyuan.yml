@@ -1,0 +1,26 @@
+# Tencent Hunyuan3D Declarative Pipeline Test Suite
+pipeline:
+  # Step 1: Text-to-Image Generation (SDXL)
+  - step: "generate_concept_art"
+    endpoint: "txt2img"
+    payload:
+      provider: "sdxl"
+      prompt: "A gorgeous sci-fi mechanical robotic glove, highly detailed concept art, photorealistic, 4k"
+      seed: 1337
+      width: 1024
+      height: 1024
+      num_inference_steps: 10 # Fast steps for testing
+
+  # Step 2: Image-to-3D Generation using Tencent Hunyuan3D
+  - step: "bake_3d_mesh_hunyuan"
+    endpoint: "img23d"
+    payload:
+      provider: "hunyuan" # Swaps the entire 3D engine strategy to Hunyuan3D!
+      image_path: "$[generate_concept_art.image_path]"
+      seed: 42
+      ss_sampling_steps: 12
+      ss_guidance_strength: 7.5
+      slat_sampling_steps: 12
+      slat_guidance_strength: 3.0
+      mesh_simplify: 0.95
+      texture_size: 1024
