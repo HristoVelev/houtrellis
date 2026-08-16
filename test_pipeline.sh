@@ -4,6 +4,10 @@
 # Ensure we exit on error
 set -e
 
+# Clean up any previously orphaned backend servers
+pkill -f "app.py" || true
+pkill -f "uvicorn" || true
+
 echo "=== 1. Starting HouTrellis FastAPI Backend ==="
 ./backend/venv/bin/python backend/app.py &
 BACKEND_PID=$!
@@ -11,9 +15,15 @@ BACKEND_PID=$!
 # Ensure the backend process gets killed on exit
 trap "kill $BACKEND_PID 2>/dev/null || true" EXIT
 
-# Wait a few seconds for uvicorn to bind to port 8000
-echo "Waiting for backend to start up..."
-sleep 5
+# Wait for uvicorn to bind to port 8000 using a robust curl probing loop
+echo "Waiting for backend server to bind to port 8000..."
+for i in {1..20}; do
+    if curl -s http://127.0.0.1:8000/ > /dev/null; then
+        echo "=== Server is active and responding! ==="
+        break
+    fi
+    sleep 1
+done
 
 echo "=== 2. Running Declarative YAML Pipeline Test ==="
 ./backend/venv/bin/python backend/test_runner.py test_pipeline.yml
