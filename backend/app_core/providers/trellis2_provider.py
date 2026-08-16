@@ -49,7 +49,7 @@ class Trellis2Provider(Base3DProvider):
 
         if HAS_TRELLIS and torch is not None and torch.cuda.is_available():
             print(
-                "[TRELLIS-2] Loading TRELLIS-2 (microsoft/TRELLIS-2-large) weights onto GPU..."
+                "[TRELLIS-2] Loading TRELLIS-2 (microsoft/TRELLIS.2-4B) weights onto GPU..."
             )
 
             # Apply xformers fmha BlockDiagonalMask monkeypatch if needed
@@ -67,9 +67,8 @@ class Trellis2Provider(Base3DProvider):
                 pass
 
             # Load the pre-trained TRELLIS-2 next-gen pipeline
-            # Fallback to the large repo model
             pipeline = TrellisImageTo3DPipeline.from_pretrained(
-                "microsoft/TRELLIS-2-large"
+                "microsoft/TRELLIS.2-4B"
             )
             pipeline.cuda()
 
