@@ -8,13 +8,13 @@ import traceback
 import uuid
 from typing import Optional
 
+from fastapi import BackgroundTasks, FastAPI, HTTPException
+from pydantic import BaseModel
+
 # Force TRELLIS to use xformers attention backend
 # and native spconv algorithm. This prevents compiling heavy third-party CUDA kernels.
 os.environ["ATTN_BACKEND"] = "xformers"
 os.environ["SPCONV_ALGO"] = "native"
-
-from fastapi import BackgroundTasks, FastAPI, HTTPException
-from pydantic import BaseModel
 
 print("=== HouTrellis Backend Startup: Loading AI Libraries ===")
 # Add the cloned TRELLIS repository to sys.path dynamically
@@ -108,9 +108,6 @@ def write_minimal_glb(output_path):
         1,  # Left-front face
     ]
 
-    # Pack binary arrays: 4 vertices * 3 floats * 4 bytes = 48 bytes
-    # 12 indices * 2 bytes (unsigned short) = 24 bytes
-    # Total BIN buffer size = 72 bytes
     bin_data = bytearray()
     for v in vertices:
         bin_data.extend(struct.pack("<f", v))
@@ -162,19 +159,13 @@ def write_minimal_glb(output_path):
 
     json_str = json.dumps(gltf_json, separators=(",", ":"))
     json_bytes = json_str.encode("utf-8")
-    # Pad JSON chunk with spaces to 4-byte alignment
     align_len = (4 - (len(json_bytes) % 4)) % 4
     json_bytes += b" " * align_len
 
-    # Binary GLB format headers:
-    # 12-byte File Header: Magic (b'glTF'), Version (2), Total Length
     total_length = 12 + 8 + len(json_bytes) + 8 + len(bin_data)
     header = struct.pack("<4sII", b"glTF", 2, total_length)
 
-    # 8-byte Chunk 0 (JSON) Header: Length, Type (b'JSON')
     chunk0_header = struct.pack("<I4s", len(json_bytes), b"JSON")
-
-    # 8-byte Chunk 1 (BIN) Header: Length, Type (b'BIN\x00')
     chunk1_header = struct.pack("<I4s", len(bin_data), b"BIN\x00")
 
     with open(output_path, "wb") as f:
@@ -191,7 +182,6 @@ def get_pipeline():
         return None
     if GLOBAL_PIPELINE is None:
         print("Loading TRELLIS model weights onto GPU...")
-        # Load pre-trained TRELLIS pipeline
         GLOBAL_PIPELINE = TrellisImageTo3DPipeline.from_pretrained(
             "microsoft/TRELLIS-image-large"
         )
@@ -205,6 +195,7 @@ tasks = {}
 
 
 class GenerateRequest(BaseModel):
+    task_id: Optional[str] = None  # Accept pre-generated Client-side Task IDs
     image_path: str
     seed: int = 42
     ss_guidance_strength: float = 7.5
@@ -222,84 +213,100 @@ class TaskStatus(BaseModel):
     error: Optional[str] = None
 
 
+class LogRedirector:
+    """Context manager to redirect stdout/stderr to a task log file in real-time."""
+
+    def __init__(self, log_path: str):
+        self.log_path = log_path
+        self.log_file = None
+        self.old_stdout = None
+        self.old_stderr = None
+
+    def __enter__(self):
+        self.log_file = open(
+            self.log_path, "w", buffering=1
+        )  # Buffering=1 for line-by-line write
+        self.old_stdout = sys.stdout
+        self.old_stderr = sys.stderr
+        sys.stdout = self.log_file
+        sys.stderr = self.log_file
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        sys.stdout = self.old_stdout
+        sys.stderr = self.old_stderr
+        if self.log_file:
+            self.log_file.close()
+
+
 def run_trellis_inference(task_id: str, request: GenerateRequest):
-    """
-    Runs TRELLIS inference or falls back to simulation mode.
-    """
-    try:
-        tasks[task_id]["status"] = "processing"
-        output_file = os.path.abspath(f"backend/outputs/{task_id}.glb")
+    """Runs TRELLIS inference, redirecting logs to outputs/{task_id}.log"""
+    log_file = os.path.abspath(f"backend/outputs/{task_id}.log")
+    output_file = os.path.abspath(f"backend/outputs/{task_id}.glb")
 
-        if HAS_TRELLIS and torch is not None and torch.cuda.is_available():
-            print(f"[{task_id}] Running real TRELLIS inference...")
-            pipeline = get_pipeline()
+    with LogRedirector(log_file):
+        try:
+            tasks[task_id]["status"] = "processing"
 
-            # Load and preprocess input image
-            image = Image.open(request.image_path)
+            if HAS_TRELLIS and torch is not None and torch.cuda.is_available():
+                print(f"[{task_id}] Starting Real TRELLIS Generation...")
+                pipeline = get_pipeline()
 
-            # Run the generative pipeline with parameters from the Houdini TOP node
-            outputs = pipeline.run(
-                image,
-                seed=request.seed,
-                formats=["gaussian", "mesh"],
-                preprocess_image=True,
-                sparse_structure_sampler_params={
-                    "steps": request.ss_sampling_steps,
-                    "cfg_strength": request.ss_guidance_strength,
-                },
-                slat_sampler_params={
-                    "steps": request.slat_sampling_steps,
-                    "cfg_strength": request.slat_guidance_strength,
-                },
-            )
+                image = Image.open(request.image_path)
+                outputs = pipeline.run(
+                    image,
+                    seed=request.seed,
+                    formats=["gaussian", "mesh"],
+                    preprocess_image=True,
+                    sparse_structure_sampler_params={
+                        "steps": request.ss_sampling_steps,
+                        "cfg_strength": request.ss_guidance_strength,
+                    },
+                    slat_sampler_params={
+                        "steps": request.slat_sampling_steps,
+                        "cfg_strength": request.slat_guidance_strength,
+                    },
+                )
 
-            # Export output to standard GLB format
-            # trellis.utils.postprocessing_utils.to_glb wraps mesh extraction and texture generation
-            glb = postprocessing_utils.to_glb(
-                outputs["gaussian"][0],
-                outputs["mesh"][0],
-                simplify=request.mesh_simplify,  # Simplify mesh dynamically from user request
-                texture_size=request.texture_size,  # Texture resolution dynamically from user request
-                fill_holes=True,
-            )
-            glb.export(output_file)
-            print(
-                f"[{task_id}] Real TRELLIS generation completed! Saved to {output_file}"
-            )
+                glb = postprocessing_utils.to_glb(
+                    outputs["gaussian"][0],
+                    outputs["mesh"][0],
+                    simplify=request.mesh_simplify,
+                    texture_size=request.texture_size,
+                    fill_holes=True,
+                )
+                glb.export(output_file)
+                print(f"SUCCESS: Generated GLB mesh completely!")
 
-        else:
-            print(
-                f"[{task_id}] Real TRELLIS not available. Running simulated generation..."
-            )
-            # Simulated processing time
-            time.sleep(5)
+            else:
+                print(f"[{task_id}] Simulated generation starting...")
+                time.sleep(5)
+                write_minimal_glb(output_file)
+                print(f"SUCCESS: Generated GLB mesh completely!")
 
-            # Generate a mathematically perfect, valid GLB file
-            write_minimal_glb(output_file)
-            print(
-                f"[{task_id}] Simulated generation completed! Saved mathematically valid GLB: {output_file}"
-            )
+            tasks[task_id]["status"] = "completed"
+            tasks[task_id]["output_path"] = output_file
 
-        tasks[task_id]["status"] = "completed"
-        tasks[task_id]["output_path"] = output_file
-
-    except Exception as e:
-        import traceback
-
-        error_details = traceback.format_exc()
-        print(f"[{task_id}] Error during generation:\n{error_details}")
-        tasks[task_id]["status"] = "failed"
-        tasks[task_id]["error"] = str(e)
+        except Exception as e:
+            error_details = traceback.format_exc()
+            print(f"ERROR: Generation failed:\n{error_details}")
+            tasks[task_id]["status"] = "failed"
+            tasks[task_id]["error"] = str(e)
 
 
 @app.post("/generate", response_model=TaskStatus)
 async def generate(request: GenerateRequest, background_tasks: BackgroundTasks):
-    task_id = str(uuid.uuid4())
+    # Use client-side generated Task ID if present, otherwise generate new
+    task_id = request.task_id if request.task_id else str(uuid.uuid4())
     tasks[task_id] = {"status": "queued", "output_path": None, "error": None}
 
+    # Execute in background, returning task_id instantly so Houdini can start log monitoring
     background_tasks.add_task(run_trellis_inference, task_id, request)
 
-    return {"task_id": task_id, "status": "queued"}
+    return {
+        "task_id": task_id,
+        "status": "queued",
+    }
 
 
 @app.get("/status/{task_id}", response_model=TaskStatus)

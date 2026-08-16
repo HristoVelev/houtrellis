@@ -2,7 +2,7 @@ import os
 import sys
 
 # Define HDA version suffix here
-VERSION = "v04"
+VERSION = "v05"
 
 
 def build_trellis_top_hda():
@@ -26,32 +26,36 @@ def build_trellis_top_hda():
     # Create a TOP Subnet Node which will be the basis of our HDA
     hda_node = topnet.createNode("subnet", "houtrellis")
 
-    # Create the internal Generic Generator TOP node to auto-start the FastAPI server if needed
+    # Create internal nodes
     server_node = hda_node.createNode("genericgenerator", "start_server")
-
-    # Create the internal URL Request TOP (httptype POST)
+    log_start_node = hda_node.createNode("pythonscript", "start_logging")
     trigger_node = hda_node.createNode("urlrequest", "trigger_generation")
-
-    # Create the internal Python Script TOP to handle clean, focused status polling
+    log_stop_node = hda_node.createNode("pythonscript", "stop_logging")
     poll_node = hda_node.createNode("pythonscript", "poll_status")
 
-    # Wire the internal nodes between Subnet Input and Subnet Output
+    # Wire the internal nodes sequentially
     subnet_input = hda_node.node("subnetinput1")
     subnet_output = hda_node.node("subnetoutput1")
 
     if subnet_input and subnet_output:
-        print("Wiring internal nodes including auto-server startup...")
+        print(
+            "Wiring internal nodes including auto-server startup and background logging..."
+        )
         server_node.setInput(0, subnet_input)
-        trigger_node.setInput(0, server_node)
-        poll_node.setInput(0, trigger_node)
+        log_start_node.setInput(0, server_node)
+        trigger_node.setInput(0, log_start_node)
+        log_stop_node.setInput(0, trigger_node)
+        poll_node.setInput(0, log_stop_node)
         subnet_output.setInput(0, poll_node)
 
         # Position them nicely inside the HDA graph viewport
-        subnet_input.setPosition(hou.Vector2(0, 4))
-        server_node.setPosition(hou.Vector2(0, 2))
-        trigger_node.setPosition(hou.Vector2(0, 0))
-        poll_node.setPosition(hou.Vector2(0, -2))
-        subnet_output.setPosition(hou.Vector2(0, -4))
+        subnet_input.setPosition(hou.Vector2(0, 5))
+        server_node.setPosition(hou.Vector2(0, 3))
+        log_start_node.setPosition(hou.Vector2(0, 1))
+        trigger_node.setPosition(hou.Vector2(0, -1))
+        log_stop_node.setPosition(hou.Vector2(0, -3))
+        poll_node.setPosition(hou.Vector2(0, -5))
+        subnet_output.setPosition(hou.Vector2(0, -7))
 
     # 2. Configure parameters for our HDA (on the parent subnet container node)
     group = hda_node.parmTemplateGroup()
@@ -110,7 +114,6 @@ if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8000/docs | grep -q "
     echo "=== HouTrellis server is already running. Proceeding... ==="
 else
     echo "=== Server not detected. Starting HouTrellis FastAPI Server... ==="
-    # Start the server in the background, redirecting stdout/stderr and detaching
     nohup /home/admin/houtrellis/backend/venv/bin/python /home/admin/houtrellis/backend/app.py > /home/admin/houtrellis/backend/server_output.log 2>&1 &
 
     # Wait a few seconds for Uvicorn to initialize and bind to port 8000
@@ -127,23 +130,75 @@ fi
     server_node.parm("shellcommand").set(1)
     server_node.parm("pdg_command").set(shell_command)
 
-    # 4. Configure parameters on the internal Trigger URL Request Node
+    # 4. Configure the start_logging parameters
+    # This node generates the client-side task ID and launches the background log tailer thread
+    start_logging_script = """import uuid
+import os
+import threading
+import time
+import hou
+
+def start_task_logging(work_item):
+    # 1. Generate client-side task ID
+    task_id = str(uuid.uuid4())
+    work_item.setAttrib('task_id', task_id)
+
+    # 2. Create the empty log file
+    log_dir = "/home/admin/houtrellis/backend/outputs"
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"{task_id}.log")
+    with open(log_file, "w") as f:
+         f.write("=== Monitoring HouTrellis GPU Job ===\\n")
+
+    # 3. Initialize custom hou.logging Source
+    log_source_name = f"HouTrellis_{task_id}"
+    logger = hou.logging.createSource(log_source_name)
+    print(f"Registered HouTrellis logging source: {log_source_name}")
+
+    # Global state to share shutdown flag with background thread
+    if not hasattr(hou, '_trellis_threads'):
+        hou._trellis_threads = {}
+
+    stop_event = threading.Event()
+    hou._trellis_threads[task_id] = stop_event
+
+    # 4. Define log tailer thread
+    def tail_file(file_path, stop_evt, log_src):
+        try:
+            with open(file_path, "r") as f:
+                # Seek to end
+                f.seek(0, 2)
+                while not stop_evt.is_set():
+                    line = f.readline()
+                    if line:
+                        # Log directly into Houdini's log view
+                        hou.logging.log(line.strip(), source_name=log_src, severity=hou.loggingSeverity.Message)
+                    else:
+                        time.sleep(0.5)
+        except Exception as e:
+            print(f"Log tailer exception: {e}")
+
+    # Launch background thread
+    t = threading.Thread(target=tail_file, args=(log_file, stop_event, log_source_name), daemon=True)
+    t.start()
+
+start_task_logging(work_item)
+"""
+    log_start_node.parm("script").set(start_logging_script)
+    log_start_node.parm("inprocess").set(True)
+
+    # 5. Configure parameters on the internal Trigger URL Request Node
     # httptype: 1 corresponds to POST
     trigger_node.parm("httptype").set(1)
-
-    # Set the target generate URL dynamically from HDA api_url parameter
     trigger_node.parm("baseurl").set('`chs("../api_url")`/generate')
-
-    # Configure JSON payload
     trigger_node.parm("usecontenttype").set(1)
     trigger_node.parm("contenttype").set("application/json")
-
-    # payloadtype: 3 corresponds to Custom String
     trigger_node.parm("payloadtype").set(3)
 
-    # Set custom payload using a robust, clean Python expression to dump the JSON dictionary!
+    # Python-based payload expression incorporating the pre-generated 'task_id'
     python_payload_expression = """import json
 payload_data = {
+  "task_id": work_item.attribValue("task_id"), # Send the pre-generated log task ID
   "image_path": hou.evalParm("../image_path"),
   "seed": hou.evalParm("../seed"),
   "ss_sampling_steps": hou.evalParm("../ss_steps"),
@@ -158,12 +213,37 @@ return json.dumps(payload_data)"""
         python_payload_expression, hou.exprLanguage.Python
     )
 
-    # Save Response directly to a PDG attribute
-    # saveto: 1 corresponds to Attribute
+    # Save Response directly to status_data attribute
     trigger_node.parm("saveto").set(1)
     trigger_node.parm("attributename").set("status_data")
 
-    # 5. Configure parameters on the internal Poll Node (Python Script TOP)
+    # 6. Configure parameters on the internal stop_logging parameters
+    # This node cleans up and destroys the log source and background thread
+    stop_task_logging_script = """import hou
+
+def stop_task_logging(work_item):
+    task_id = work_item.attribValue('task_id')
+    log_source_name = f"HouTrellis_{task_id}"
+
+    # Signal the log tailer thread to exit
+    if hasattr(hou, '_trellis_threads') and task_id in hou._trellis_threads:
+        print(f"Stopping log tailer thread for: {task_id}")
+        hou._trellis_threads[task_id].set()
+        del hou._trellis_threads[task_id]
+
+    # Unregister the logging source
+    try:
+        hou.logging.destroySource(log_source_name)
+        print(f"Unregistered HouTrellis logging source: {log_source_name}")
+    except Exception as e:
+        print(f"Error unregistering logging source: {e}")
+
+stop_task_logging(work_item)
+"""
+    log_stop_node.parm("script").set(stop_task_logging_script)
+    log_stop_node.parm("inprocess").set(True)
+
+    # 7. Configure parameters on the internal Poll Node (Python Script TOP)
     polling_script = """# Clean, Focused Status Polling
 import os
 import time
@@ -173,37 +253,16 @@ import pdg
 
 def cook_status_polling(work_item):
     node = work_item.holder.node
-    # Find the HDA subnet node dynamically
     param_node = node.parent() if (node.parent() and node.parent().type().name() != "topnet") else node
     api_url = param_node.evalParm('api_url')
 
-    # Parse the status_data JSON string to extract the task ID
-    raw_status = work_item.attribValue('status_data')
-    if not raw_status:
-        print("Error: Could not find valid 'status_data' attribute on trigger node.")
-        work_item.setFailed()
-        return
-
-    try:
-        status_data = json.loads(raw_status)
-    except Exception as je:
-        print(f"Error parsing status_data JSON: {je}. Raw content: {raw_status}")
-        work_item.setFailed()
-        return
-
-    if 'task_id' not in status_data:
-        print(f"Error: No 'task_id' present in status_data response. Content: {status_data}")
-        work_item.setFailed()
-        return
-
-    task_id = status_data['task_id']
+    task_id = work_item.attribValue('task_id')
     status_endpoint = f"{api_url.rstrip('/')}/status/{task_id}"
 
     poll_interval = 2.0
     timeout = 600.0
     start_time = time.time()
 
-    print(f"Starting status polling for Task ID: {task_id}")
     while True:
         if time.time() - start_time > timeout:
             print(f"Error: Polling timed out after {timeout} seconds.")
@@ -224,7 +283,7 @@ def cook_status_polling(work_item):
                 work_item.setFailed()
                 return
             elif status in ["queued", "processing"]:
-                print(f"State: {status}... sleeping for {poll_interval}s")
+                # Let the background logging thread do the work. Just sleep and poll status.
                 time.sleep(poll_interval)
             else:
                 print(f"Error: Unexpected status value: {status}")
@@ -241,7 +300,7 @@ cook_status_polling(work_item)
     poll_node.parm("script").set(polling_script)
     poll_node.parm("inprocess").set(True)
 
-    # 6. Create the digital asset definition from the Subnet Container Node
+    # 8. Create the digital asset definition from the Subnet Container Node
     hda_node_type_name = f"houtrellis_{VERSION}"
     hda_label = f"HouTrellis TOP {VERSION.upper()}"
 
