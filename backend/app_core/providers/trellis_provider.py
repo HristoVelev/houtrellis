@@ -8,6 +8,13 @@ from typing import Any, Dict
 from ..core import vram
 from .base import Base3DProvider
 
+# Dynamically add the cloned TRELLIS repository to sys.path
+provider_dir = os.path.dirname(os.path.abspath(__file__))
+trellis_path = os.path.abspath(os.path.join(provider_dir, "..", "..", "TRELLIS"))
+if os.path.exists(trellis_path) and trellis_path not in sys.path:
+    sys.path.append(trellis_path)
+    print(f"[TRELLIS Provider] Appended TRELLIS repo to sys.path: {trellis_path}")
+
 try:
     import torch
     from PIL import Image
