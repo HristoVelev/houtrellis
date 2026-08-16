@@ -1,4 +1,5 @@
-venv/
+backend/venv/
 __pycache__/
 *.pyc
 outputs/
+backend/outputs/
