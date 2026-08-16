@@ -2,7 +2,7 @@ import os
 import sys
 
 # Define HDA version suffix here
-VERSION = "v03"
+VERSION = "v04"
 
 
 def build_trellis_top_hda():
@@ -141,18 +141,22 @@ fi
     # payloadtype: 3 corresponds to Custom String
     trigger_node.parm("payloadtype").set(3)
 
-    # Embed raw JSON body that references our parent HDA parameters using Houdini backticks
-    raw_payload_json = """{
-  "image_path": "`chs("../image_path")`",
-  "seed": `chi("../seed")`,
-  "ss_sampling_steps": `chi("../ss_steps")`,
-  "ss_guidance_strength": `ch("../ss_strength")`,
-  "slat_sampling_steps": `chi("../slat_steps")`,
-  "slat_guidance_strength": `ch("../slat_strength")`,
-  "mesh_simplify": `ch("../mesh_simplify")`,
-  "texture_size": `chi("../texture_size")`
-}"""
-    trigger_node.parm("payloadcustom").set(raw_payload_json)
+    # Set custom payload using a robust, clean Python expression to dump the JSON dictionary!
+    python_payload_expression = """import json
+payload_data = {
+  "image_path": hou.evalParm("../image_path"),
+  "seed": hou.evalParm("../seed"),
+  "ss_sampling_steps": hou.evalParm("../ss_steps"),
+  "ss_guidance_strength": hou.evalParm("../ss_strength"),
+  "slat_sampling_steps": hou.evalParm("../slat_steps"),
+  "slat_guidance_strength": hou.evalParm("../slat_strength"),
+  "mesh_simplify": hou.evalParm("../mesh_simplify"),
+  "texture_size": hou.evalParm("../texture_size")
+}
+return json.dumps(payload_data)"""
+    trigger_node.parm("payloadcustom").setExpression(
+        python_payload_expression, hou.exprLanguage.Python
+    )
 
     # Save Response directly to a PDG attribute
     # saveto: 1 corresponds to Attribute
@@ -164,6 +168,7 @@ fi
 import os
 import time
 import requests
+import json
 import pdg
 
 def cook_status_polling(work_item):
@@ -172,10 +177,22 @@ def cook_status_polling(work_item):
     param_node = node.parent() if (node.parent() and node.parent().type().name() != "topnet") else node
     api_url = param_node.evalParm('api_url')
 
-    # Extract task ID from our previous urlrequest response attribute
-    status_data = work_item.attribValue('status_data')
-    if not status_data or 'task_id' not in status_data:
-        print("Error: Could not find valid 'task_id' in work item attributes.")
+    # Parse the status_data JSON string to extract the task ID
+    raw_status = work_item.attribValue('status_data')
+    if not raw_status:
+        print("Error: Could not find valid 'status_data' attribute on trigger node.")
+        work_item.setFailed()
+        return
+
+    try:
+        status_data = json.loads(raw_status)
+    except Exception as je:
+        print(f"Error parsing status_data JSON: {je}. Raw content: {raw_status}")
+        work_item.setFailed()
+        return
+
+    if 'task_id' not in status_data:
+        print(f"Error: No 'task_id' present in status_data response. Content: {status_data}")
         work_item.setFailed()
         return
 
