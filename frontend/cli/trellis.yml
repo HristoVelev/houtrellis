@@ -1,0 +1,41 @@
+# HouTrellis Declarative Pipeline Test Suite
+pipeline:
+  # Step 1: Text-to-Image Generation
+  - step: "generate_concept_art"
+    endpoint: "txt2img"
+    payload:
+      provider: "sdxl"
+      prompt: "complex electromochanical device, cylinder with pointy end, highly detailed concept art"
+      seed: 1337
+      width: 1024
+      height: 1024
+      num_inference_steps: 80 # Fast steps for testing
+
+  # Step 2: Image-to-3D Generation (Chains outputs from Step 1!)
+  - step: "bake_3d_mesh"
+    endpoint: "img23d"
+    payload:
+      provider: "trellis"
+      # Dynamically inject the output image path from the previous 'generate_concept_art' step!
+      image_path: "$[generate_concept_art.image_path]"
+      seed: 42
+      ss_sampling_steps: 12
+      ss_guidance_strength: 7.5
+      slat_sampling_steps: 12
+      slat_guidance_strength: 3.0
+      mesh_simplify: 0.1
+      texture_size: 2048
+
+  # Step 3: Image-to-3D Generation using Next-Gen Trellis-2 (Chains outputs from Step 1!)
+  - step: "bake_3d_mesh_v2"
+    endpoint: "img23d"
+    payload:
+      provider: "trellis2"
+      image_path: "$[generate_concept_art.image_path]"
+      seed: 42
+      ss_sampling_steps: 12
+      ss_guidance_strength: 7.5
+      slat_sampling_steps: 12
+      slat_guidance_strength: 3.0
+      mesh_simplify: 0.1
+      texture_size: 2048
