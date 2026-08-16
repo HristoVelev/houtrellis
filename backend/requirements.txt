@@ -3,3 +3,10 @@ uvicorn
 pydantic
 python-multipart
 requests
+pyyaml
+pymcubes
+roma
+einops
+jaxtyping
+typeguard
+omegaconf
