@@ -210,6 +210,7 @@ class TaskStatus(BaseModel):
     task_id: str
     status: str
     output_path: Optional[str] = None
+    log_path: Optional[str] = None  # Added absolute log file path
     error: Optional[str] = None
 
 
@@ -298,7 +299,17 @@ def run_trellis_inference(task_id: str, request: GenerateRequest):
 async def generate(request: GenerateRequest, background_tasks: BackgroundTasks):
     # Use client-side generated Task ID if present, otherwise generate new
     task_id = request.task_id if request.task_id else str(uuid.uuid4())
-    tasks[task_id] = {"status": "queued", "output_path": None, "error": None}
+
+    # Calculate pre-computed absolute file paths
+    output_file = os.path.abspath(f"backend/outputs/{task_id}.glb")
+    log_file = os.path.abspath(f"backend/outputs/{task_id}.log")
+
+    tasks[task_id] = {
+        "status": "queued",
+        "output_path": output_file,
+        "log_path": log_file,
+        "error": None,
+    }
 
     # Execute in background, returning task_id instantly so Houdini can start log monitoring
     background_tasks.add_task(run_trellis_inference, task_id, request)
@@ -306,6 +317,9 @@ async def generate(request: GenerateRequest, background_tasks: BackgroundTasks):
     return {
         "task_id": task_id,
         "status": "queued",
+        "output_path": output_file,
+        "log_path": log_file,
+        "error": None,
     }
 
 
@@ -318,6 +332,7 @@ async def get_status(task_id: str):
         "task_id": task_id,
         "status": tasks[task_id]["status"],
         "output_path": tasks[task_id]["output_path"],
+        "log_path": tasks[task_id]["log_path"],
         "error": tasks[task_id]["error"],
     }
 
