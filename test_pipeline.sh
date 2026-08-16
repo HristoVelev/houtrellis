@@ -26,6 +26,6 @@ for i in {1..20}; do
 done
 
 echo "=== 2. Running Declarative YAML Pipeline Test ==="
-./backend/venv/bin/python backend/test_runner.py test_pipeline.yml
+./backend/venv/bin/python backend/test_runner.py frontend/cli/test_pipeline.yml
 
 echo "=== Test Complete ==="
